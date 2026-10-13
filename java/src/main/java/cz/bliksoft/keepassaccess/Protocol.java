@@ -5,9 +5,11 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Wire format of the KeePassAccess plugin. A request is one line ({@code PING}, {@code LIST}, {@code GET <uuid>}); a
@@ -117,6 +119,25 @@ public final class Protocol {
 		for (String[] p : pairs(lines))
 			fields.put(decode(p[0]), decode(p[1]));
 		return Collections.unmodifiableMap(fields);
+	}
+
+	/**
+	 * Names of the protected fields of a GET/FIND response: fields KeePass protects (Password by default) or whose
+	 * value comes from a reference. Plugin 1.4+ sends them in the status line, {@code OK protected=<b64>,<b64>}.
+	 *
+	 * @return the names, or {@code null} if the plugin does not report protection
+	 */
+	public static Set<String> parseProtected(List<String> lines) throws KeePassAccessException {
+		for (String attr : ok(lines).split(" ")) {
+			if (!attr.startsWith("protected="))
+				continue;
+			Set<String> names = new LinkedHashSet<>();
+			for (String n : attr.substring("protected=".length()).split(","))
+				if (!n.isEmpty())
+					names.add(decode(n));
+			return Collections.unmodifiableSet(names);
+		}
+		return null;
 	}
 
 	/** Checks the status line; @return the text after {@code OK}. */

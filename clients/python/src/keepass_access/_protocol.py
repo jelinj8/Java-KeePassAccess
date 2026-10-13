@@ -8,7 +8,7 @@ base64 (UTF-8) except the entry UUID.
 import base64
 import binascii
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional, Set
 
 from .errors import AccessDenied, Ambiguous, EntryNotFound, KeePassAccessError, Locked
 
@@ -97,6 +97,15 @@ def parse_get(lines: List[str]) -> Dict[str, str]:
     """Field name to value, in KeePass order."""
     _ok(lines)
     return {_decode(k): _decode(v) for k, v in _pairs(lines)}
+
+
+def parse_protected(lines: List[str]) -> Optional[Set[str]]:
+    """Names of the protected fields of a GET/FIND response (KeePass-protected, or the value comes from a
+    reference); plugin 1.4+ sends them as ``OK protected=<b64>,<b64>``. None if the plugin does not report them."""
+    for attr in _ok(lines).split(" "):
+        if attr.startswith("protected="):
+            return {_decode(n) for n in attr[len("protected="):].split(",") if n}
+    return None
 
 
 _ERRORS = {"LOCKED": Locked, "NOT_FOUND": EntryNotFound, "DENIED": AccessDenied, "AMBIGUOUS": Ambiguous}

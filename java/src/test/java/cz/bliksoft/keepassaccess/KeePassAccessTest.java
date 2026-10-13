@@ -4,11 +4,13 @@ import static cz.bliksoft.keepassaccess.ProtocolTest.UUID;
 import static cz.bliksoft.keepassaccess.ProtocolTest.b64;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -34,6 +36,20 @@ class KeePassAccessTest {
 		assertEquals("appuser", kp.field(UUID.toUpperCase(), "username")); // case-insensitive fallback
 		assertEquals("APPDB.EXAMPLE", kp.field("{" + UUID + "}", "SERVICE"));
 		assertEquals(1, t.requests.size(), "one request per entry");
+	}
+
+	@Test
+	void protectedFieldsShareTheCachedRequest() throws Exception {
+		List<String> requests = new ArrayList<>();
+		KeePassAccess kp = new KeePassAccess(request -> {
+			requests.add(request);
+			return Arrays.asList("OK protected=" + b64("Password"), b64("UserName") + "\t" + b64("appuser"),
+					b64("Password") + "\t" + b64("s3cret"), "", "");
+		});
+		assertEquals(Collections.singleton("Password"), kp.protectedFields("app-db-user"));
+		assertEquals("appuser", kp.field("app-db-user", "UserName"));
+		assertEquals(1, requests.size());
+		assertNull(new KeePassAccess(new FakeTransport()).protectedFields(UUID), "plugin before 1.4");
 	}
 
 	@Test

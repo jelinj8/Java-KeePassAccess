@@ -56,11 +56,15 @@ One request line per connection; the response is a list of lines ending with an 
 |---|---|
 | `PING` | `OK <number of unlocked databases>` |
 | `LIST` | `OK`, then `<uuid hex>\t<base64 title>\t<base64 name tags, comma separated>` per tagged entry (no secret values) |
-| `GET <uuid>` | `OK`, then `<base64 field name>\t<base64 value>` per string field (Title, UserName, Password, URL, Notes, custom fields) |
+| `GET <uuid>` | `OK protected=<base64 name>,...` (plugin 1.4+; older plugins send `OK`), then `<base64 field name>\t<base64 value>` per string field (Title, UserName, Password, URL, Notes, custom fields) |
 | `FIND <name>` | like `GET`, for the one shared entry that also has the tag `<name>` (case-insensitive); plugin 1.2+ |
 | error | `ERR LOCKED\|NOT_FOUND\|DENIED\|AMBIGUOUS\|BAD_REQUEST <message>` |
 
 The UUID is 32 hex digits; dashes, braces and spaces are ignored. Base64 is applied to UTF-8.
+
+`protected=` lists the secret fields: those KeePass protects (Password by default, custom fields with *Enable
+in-memory protection* on the Advanced tab) and those whose value comes from a reference (`{REF:...}`). Clients
+ignore the text after `OK`, so all values are returned as before; the MCP server uses the list to decide what to mask.
 
 ## Java
 
@@ -138,10 +142,11 @@ Same API and errors as the Java client (`KeePassAccessError`, an `OSError`, with
 
 ## Claude (MCP server)
 
-`keepass-access-mcp` lets Claude and other AI assistants use shared entries in commands **without the values
-entering the conversation, the transcript or a shell history**: the assistant names references
+`keepass-access-mcp` lets Claude and other AI assistants use shared entries in commands **without the secret
+values entering the conversation, the transcript or a shell history**: the assistant names references
 (`app-db-user#Password`), the server runs the command with the values in environment variables and returns the
-output with every value masked as `***NAME***`. Read-only tools list entries and field names, never values.
+output with the values of protected fields masked as `***NAME***`. Read-only tools list entries and fields;
+unprotected values (URL, UserName, ...) are shown, protected ones never.
 
 Setup, tools, permission rules and security notes: [clients/python/README.md](clients/python/README.md). The setup
 steps are written so Claude can follow them: point it to

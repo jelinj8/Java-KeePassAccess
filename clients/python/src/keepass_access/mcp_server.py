@@ -1,12 +1,14 @@
-"""MCP server (stdio): lets an AI assistant use shared KeePass entries without seeing their values.
+"""MCP server (stdio): lets an AI assistant use shared KeePass entries without seeing their secret values.
 
-Tools return entry UUIDs, titles, name tags and field names, never values. run_with_secrets starts a command with
-values in environment variables and returns its output with the values masked.
+Protected fields (Password, custom fields with in-memory protection, values from a reference) are never returned;
+unprotected ones (Title, UserName, URL, Notes, ...) are. run_with_secrets starts a command with values in
+environment variables and returns its output with the protected values masked.
 
     claude mcp add -s user keepass-access -- keepass-access-mcp
 """
 
 from importlib import metadata
+import json
 from typing import Callable, Dict, Optional
 
 from mcp.server.mcpserver import MCPServer
@@ -17,13 +19,15 @@ from .errors import Locked, NotRunning
 
 INSTRUCTIONS = """\
 Access to passwords and other fields of KeePass entries that the user shared (tag ExternalAccess) in their
-running KeePass. Values are never returned to you, by design: do not try to obtain, print, transform or store them.
+running KeePass. Values of protected fields (Password, fields the user protected in KeePass, values from a
+reference) are never returned to you, by design: do not try to obtain, print, transform or store them. Unprotected
+fields (Title, UserName, URL, Notes, ...) are not secret; list_fields shows their values.
 To use a value, call run_with_secrets with the command and a mapping of environment variable names to entry
-references; the command reads the variables ($env:NAME in PowerShell, %NAME% in cmd, $NAME in bash). Every
-injected value is masked as ***NAME*** in the returned output. Entry references are an entry UUID (32 hex digits)
-or a name tag of the entry, optionally followed by #FieldName (default Password). Use list_entries and
-list_fields to find references. Never put a value into a file, a command line argument visible to other processes,
-or a log, unless the user asked for exactly that."""
+references; the command reads the variables ($env:NAME in PowerShell, %NAME% in cmd, $NAME in bash). Values of
+protected fields are masked as ***NAME*** in the returned output. Entry references are an entry UUID (32 hex
+digits) or a name tag of the entry, optionally followed by #FieldName (default Password). Use list_entries and
+list_fields to find references. Never put a protected value into a file, a command line argument visible to other
+processes, or a log, unless the user asked for exactly that."""
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 
@@ -63,18 +67,28 @@ def list_entries() -> str:
 
 @server.tool(annotations=READ_ONLY)
 def list_fields(ref: str) -> str:
-    """Field names of a shared entry (Title, UserName, Password, URL, Notes, custom fields), without values.
+    """Fields of a shared entry (Title, UserName, Password, URL, Notes, custom fields): the value of each
+    unprotected field (as a JSON string), "protected (set)" or "protected (empty)" for protected ones.
 
     ref: entry UUID (32 hex digits) or name tag.
     """
-    fields = connect().entry(ref)
-    return "\n".join(f"{name}\t{'empty' if not value else 'set'}" for name, value in fields.items())
+    kp = connect()
+    fields = kp.entry(ref)
+    protected = kp.protected_fields(ref)
+    if protected is None:
+        lines = [f"{name}\t{'empty' if not value else 'set'}" for name, value in fields.items()]
+        lines.append("(the KeePassAccess plugin is older than 1.4 and does not report protected fields, so no "
+                     "values are shown and run_with_secrets masks every value; ask the user to update the plugin)")
+        return "\n".join(lines)
+    return "\n".join(f"{name}\tprotected ({'set' if value else 'empty'})" if name in protected
+                     else f"{name}\t{json.dumps(value, ensure_ascii=False)}" for name, value in fields.items())
 
 
 @server.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True))
 def run_with_secrets(command: str, secrets: Dict[str, str], shell: str = "powershell", cwd: Optional[str] = None,
                      timeout_seconds: int = 120) -> str:
-    """Runs a command with KeePass values in environment variables; returns exit code and output, values masked.
+    """Runs a command with KeePass values in environment variables; returns exit code and output, with the values
+    of protected fields masked.
 
     command: script text for the shell; read values from the variables, never inline them.
     secrets: environment variable name -> entry reference: "<uuid or name tag>" (Password) or
@@ -84,14 +98,17 @@ def run_with_secrets(command: str, secrets: Dict[str, str], shell: str = "powers
     timeout_seconds: the process tree is killed after this time.
     """
     try:
-        values = runner.resolve(connect(), secrets)
+        values, masked = runner.resolve(connect(), secrets)
     except Locked:
         return "Not run: all KeePass databases are locked; ask the user to unlock one."
     except NotRunning:
         return "Not run: KeePass with the KeePassAccess plugin is not running for this user."
-    result = runner.run(command, values, shell, cwd, timeout_seconds)
+    result = runner.run(command, values, shell, cwd, timeout_seconds, masked)
+    visible = sorted(set(values) - masked)
     parts = [f"exit code: {result.exit_code}" + (" (killed after timeout)" if result.timed_out else ""),
-             "injected and masked in output: " + ", ".join(sorted(values))]
+             "masked in output (protected): " + (", ".join(sorted(masked)) or "none")]
+    if visible:
+        parts.append("not masked (unprotected): " + ", ".join(visible))
     if result.truncated:
         parts.append(f"output cut to the last {runner.MAX_OUTPUT_CHARS} characters per stream")
     if result.stdout:

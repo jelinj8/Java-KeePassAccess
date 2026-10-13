@@ -2,12 +2,14 @@ package cz.bliksoft.keepassaccess;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -41,6 +43,16 @@ class ProtocolTest {
 		assertEquals(Arrays.asList("UserName", "Password", "HOST"), Arrays.asList(f.keySet().toArray()));
 		assertEquals("pä\tss\nword", f.get("Password"));
 		assertEquals("", f.get("HOST"));
+	}
+
+	@Test
+	void protectedFields() throws Exception {
+		List<String> withList = lines("OK protected=" + b64("Password") + "," + b64("API Key"),
+				b64("UserName") + "\t" + b64("appuser"), b64("Password") + "\t" + b64("s3cret"), "", "");
+		assertEquals(new LinkedHashSet<>(Arrays.asList("Password", "API Key")), Protocol.parseProtected(withList));
+		assertEquals("s3cret", Protocol.parseGet(withList).get("Password"), "fields are parsed as before");
+		assertTrue(Protocol.parseProtected(lines("OK protected=", "", "")).isEmpty());
+		assertNull(Protocol.parseProtected(lines("OK", "", "")), "plugin before 1.4");
 	}
 
 	@Test

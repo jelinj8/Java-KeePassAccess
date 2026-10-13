@@ -27,9 +27,30 @@ def test_parse_secret_ref_invalid(spec):
 
 
 def test_resolve(transport):
-    values = runner.resolve(KeePassAccess(transport), {"P": "app-db-user", "H": "app-db-user#HOST"})
-    assert values == {"P": PASSWORD, "H": "db.example.org"}
+    values, masked = runner.resolve(KeePassAccess(transport), {"P": "app-db-user", "H": "app-db-user#HOST",
+                                                               "N": "app-db-user#notes"})
+    assert values == {"P": PASSWORD, "H": "db.example.org", "N": "first line\nsecond secret line"}
+    assert masked == {"P", "N"}  # notes: case-insensitive match of the protected field Notes
     assert transport.requests == ["FIND app-db-user\n"]
+
+
+def test_resolve_old_plugin_masks_all(transport):
+    _, masked = runner.resolve(KeePassAccess(transport), {"P": "old-plugin", "H": "old-plugin#HOST"})
+    assert masked == {"P", "H"}
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows shells")
+def test_run_masks_only_given_names():
+    result = runner.run("Write-Output \"$env:H $env:P\"", {"P": PASSWORD, "H": "db.example.org"}, "powershell",
+                        masked={"P"})
+    assert result.stdout.strip() == "db.example.org ***P***"
+
+
+def test_protected_fields_api(transport):
+    kp = KeePassAccess(transport)
+    assert kp.protected_fields("app-db-user") == {"Password", "Notes"}
+    assert kp.protected_fields("old-plugin") is None
+    assert kp.password("old-plugin") == PASSWORD  # values unchanged with either plugin
 
 
 @pytest.mark.parametrize("secrets,error", [

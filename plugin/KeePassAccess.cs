@@ -287,18 +287,27 @@ namespace KeePassAccess
 			return Fields(foundDb, found);
 		}
 
+		/// <summary>
+		/// Status line "OK protected=&lt;b64 name&gt;,..." (plugin 1.4+; older clients ignore the text after OK), then
+		/// one line per field. A field is protected if KeePass protects it or if a placeholder changed its value: a
+		/// {REF:...} may pull in another entry's password.
+		/// </summary>
 		private static string Fields(PwDatabase db, PwEntry e)
 		{
-			StringBuilder sb = new StringBuilder("OK\n");
+			StringBuilder lines = new StringBuilder();
+			List<string> protectedNames = new List<string>();
 			SprContext ctx = new SprContext(e, db, SprCompileFlags.Deref);
 			foreach (KeyValuePair<string, ProtectedString> kv in e.Strings)
 			{
-				string value = kv.Value.ReadString();
+				string raw = kv.Value.ReadString();
+				string value = raw;
 				if (value.IndexOf('{') >= 0)
 					value = SprEngine.Compile(value, ctx); // {REF:...} as KeePass shows it; no commands
-				sb.Append(B64(kv.Key)).Append('\t').Append(B64(value)).Append('\n');
+				if (kv.Value.IsProtected || value != raw)
+					protectedNames.Add(B64(kv.Key));
+				lines.Append(B64(kv.Key)).Append('\t').Append(B64(value)).Append('\n');
 			}
-			return sb.Append('\n').ToString();
+			return "OK protected=" + string.Join(",", protectedNames.ToArray()) + "\n" + lines.Append('\n');
 		}
 
 		/// <summary>The entry's tags except AccessTag: its names for FIND.</summary>

@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Reads entries from a running, unlocked KeePass 2.x with the KeePassAccess plugin. Only entries tagged
@@ -23,7 +24,7 @@ import java.util.Map;
  */
 public final class KeePassAccess {
 	private final Transport transport;
-	private final Map<String, Map<String, String>> cache = new HashMap<>();
+	private final Map<String, Entry> cache = new HashMap<>();
 
 	public KeePassAccess(Transport transport) {
 		this.transport = transport;
@@ -50,15 +51,41 @@ public final class KeePassAccess {
 	 * @param ref entry UUID (32 hex digits, dashes and braces allowed) or name tag
 	 */
 	public Map<String, String> entry(String ref) throws IOException {
+		return load(ref).fields;
+	}
+
+	/**
+	 * Names of the entry's protected fields: fields KeePass protects (Password by default, custom fields with
+	 * in-memory protection) or whose value comes from a reference. Values of all fields are returned by
+	 * {@link #entry} and {@link #field} as usual; this only tells which ones are secret.
+	 *
+	 * @return the names, or {@code null} if the plugin does not report protection (plugin before 1.4)
+	 */
+	public Set<String> protectedFields(String ref) throws IOException {
+		return load(ref).protectedNames;
+	}
+
+	private Entry load(String ref) throws IOException {
 		boolean byUuid = Protocol.isUuid(ref);
 		String key = byUuid ? Protocol.normalizeUuid(ref) : "name:" + Protocol.normalizeName(ref).toLowerCase(Locale.ROOT);
-		Map<String, String> e = cache.get(key);
+		Entry e = cache.get(key);
 		if (e == null) {
 			String request = byUuid ? Protocol.getRequest(ref) : Protocol.findRequest(ref);
-			e = Protocol.parseGet(transport.exchange(request));
+			List<String> lines = transport.exchange(request);
+			e = new Entry(Protocol.parseGet(lines), Protocol.parseProtected(lines));
 			cache.put(key, e);
 		}
 		return e;
+	}
+
+	private static final class Entry {
+		final Map<String, String> fields;
+		final Set<String> protectedNames;
+
+		Entry(Map<String, String> fields, Set<String> protectedNames) {
+			this.fields = fields;
+			this.protectedNames = protectedNames;
+		}
 	}
 
 	/** One field; the name is matched exactly first, then case-insensitively. */

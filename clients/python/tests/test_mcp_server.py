@@ -45,18 +45,36 @@ def test_list_entries(server):
     assert "3f2504e04f8911d39a0c0305e82c3301\tDB\tapp-db-user, team" in text
 
 
-def test_list_fields_has_no_values(server):
-    text = mcp_server.list_fields("app-db-user")
-    assert "Password\tset" in text and "HOST\tset" in text
+def test_list_fields_shows_only_unprotected_values(server):
+    lines = mcp_server.list_fields("app-db-user").split("\n")
+    assert "Password\tprotected (set)" in lines and "Notes\tprotected (set)" in lines
+    assert 'HOST\t"db.example.org"' in lines and 'UserName\t"app"' in lines
+    text = "\n".join(lines)
+    assert PASSWORD not in text and "second secret line" not in text
+
+
+def test_list_fields_old_plugin_shows_no_values(server):
+    text = mcp_server.list_fields("old-plugin")
+    assert "Password\tset" in text and "HOST\tset" in text and "older than 1.4" in text
     assert PASSWORD not in text and "db.example.org" not in text
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows shells")
-def test_run_with_secrets(server):
+def test_run_with_secrets_masks_only_protected(server):
     text = mcp_server.run_with_secrets("Write-Output \"$env:DB_HOST $env:PGPASSWORD\"",
                                        {"PGPASSWORD": "app-db-user", "DB_HOST": "app-db-user#HOST"})
     assert "exit code: 0" in text
-    assert "injected and masked in output: DB_HOST, PGPASSWORD" in text
+    assert "masked in output (protected): PGPASSWORD" in text
+    assert "not masked (unprotected): DB_HOST" in text
+    assert "db.example.org ***PGPASSWORD***" in text
+    assert PASSWORD not in text
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows shells")
+def test_run_with_secrets_old_plugin_masks_all(server):
+    text = mcp_server.run_with_secrets("Write-Output \"$env:DB_HOST $env:PGPASSWORD\"",
+                                       {"PGPASSWORD": "old-plugin", "DB_HOST": "old-plugin#HOST"})
+    assert "masked in output (protected): DB_HOST, PGPASSWORD" in text
     assert "***DB_HOST*** ***PGPASSWORD***" in text
     assert PASSWORD not in text and "db.example.org" not in text
 

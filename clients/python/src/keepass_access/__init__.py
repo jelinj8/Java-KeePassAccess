@@ -11,7 +11,7 @@ entry, unique among the shared entries. Entries are cached per instance, so repe
 Not thread-safe. Values are never logged or put into exception messages.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Optional, Set, Tuple
 
 from . import _protocol as protocol
 from ._pipe import PipeTransport
@@ -27,7 +27,7 @@ class KeePassAccess:
     def __init__(self, transport):
         """transport: object with exchange(request: str) -> list of response lines (see PipeTransport)."""
         self._transport = transport
-        self._cache: Dict[str, Dict[str, str]] = {}
+        self._cache: Dict[str, Tuple[Dict[str, str], Optional[Set[str]]]] = {}
 
     @classmethod
     def local(cls) -> "KeePassAccess":
@@ -47,14 +47,26 @@ class KeePassAccess:
 
         ref: entry UUID (32 hex digits, dashes and braces allowed) or name tag.
         """
+        return dict(self._load(ref)[0])
+
+    def protected_fields(self, ref: str) -> Optional[Set[str]]:
+        """Names of the entry's protected fields: fields KeePass protects (Password by default, custom fields with
+        in-memory protection) or whose value comes from a reference. entry() and field() return all values as
+        usual; this only tells which ones are secret. None if the plugin does not report protection (before 1.4).
+        """
+        names = self._load(ref)[1]
+        return None if names is None else set(names)
+
+    def _load(self, ref: str) -> Tuple[Dict[str, str], Optional[Set[str]]]:
         by_uuid = protocol.is_uuid(ref)
         key = protocol.normalize_uuid(ref) if by_uuid else "name:" + protocol.normalize_name(ref).lower()
         e = self._cache.get(key)
         if e is None:
             request = protocol.get_request(ref) if by_uuid else protocol.find_request(ref)
-            e = protocol.parse_get(self._transport.exchange(request))
+            lines = self._transport.exchange(request)
+            e = (protocol.parse_get(lines), protocol.parse_protected(lines))
             self._cache[key] = e
-        return dict(e)
+        return e
 
     def field(self, ref: str, name: str) -> str:
         """One field; the name is matched exactly first, then case-insensitively."""

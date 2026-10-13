@@ -1,8 +1,10 @@
-"""Runs a command with KeePass values in environment variables and masks the values in its output.
+"""Runs a command with KeePass values in environment variables and masks the secret ones in its output.
 
-The values never leave this process except into the child's environment; the output returned to the caller has
-every injected value replaced by ``***NAME***``. Masking guards against accidental echo (verbose logs, error dumps);
-it cannot stop a command that deliberately transforms and prints a value.
+The values never leave this process except into the child's environment. In the output returned to the caller,
+every value of a protected field (Password, custom fields with in-memory protection, values from a reference) is
+replaced by ``***NAME***``; with a plugin that does not report protection, every injected value is. Masking guards
+against accidental echo (verbose logs, error dumps); it cannot stop a command that deliberately transforms and
+prints a value.
 """
 
 import codecs
@@ -11,7 +13,7 @@ import re
 import shutil
 import subprocess
 from dataclasses import dataclass
-from typing import Dict, List, Mapping, Tuple
+from typing import Collection, Dict, List, Mapping, Optional, Set, Tuple
 
 from . import KeePassAccess
 from ._protocol import PASSWORD
@@ -37,8 +39,22 @@ def parse_secret_ref(spec: str) -> Tuple[str, str]:
     return ref, field or PASSWORD
 
 
-def resolve(kp: KeePassAccess, secrets: Mapping[str, str]) -> Dict[str, str]:
-    """Environment variable name -> value. All references are checked before any value is used."""
+def matched_field(fields: Mapping[str, str], name: str) -> Optional[str]:
+    """The field name KeePassAccess.field() matches: exact first, then case-insensitive."""
+    if name in fields:
+        return name
+    return next((k for k in fields if k.lower() == name.lower()), None)
+
+
+def is_masked(kp: KeePassAccess, ref: str, field: str) -> bool:
+    """A field is masked if it is protected, or always if the plugin does not report protection."""
+    protected = kp.protected_fields(ref)
+    return protected is None or matched_field(kp.entry(ref), field) in protected
+
+
+def resolve(kp: KeePassAccess, secrets: Mapping[str, str]) -> Tuple[Dict[str, str], Set[str]]:
+    """(environment variable name -> value, names of the variables to mask). All references are checked before
+    any value is used."""
     if not secrets:
         raise ValueError("no secrets given")
     parsed = {}
@@ -46,7 +62,9 @@ def resolve(kp: KeePassAccess, secrets: Mapping[str, str]) -> Dict[str, str]:
         if not ENV_NAME.match(name):
             raise ValueError(f"invalid environment variable name '{name}'")
         parsed[name] = parse_secret_ref(spec)
-    return {name: kp.field(ref, field) for name, (ref, field) in parsed.items()}
+    values = {name: kp.field(ref, field) for name, (ref, field) in parsed.items()}
+    masked = {name for name, (ref, field) in parsed.items() if is_masked(kp, ref, field)}
+    return values, masked
 
 
 def _encodings() -> List[str]:
@@ -143,7 +161,8 @@ class RunResult:
 
 
 def run(command: str, values: Mapping[str, str], shell: str = "powershell", cwd: str = None,
-        timeout_seconds: float = 120) -> RunResult:
+        timeout_seconds: float = 120, masked: Optional[Collection[str]] = None) -> RunResult:
+    """masked: names of the variables whose values are masked in the output; None masks all."""
     argv = shell_argv(shell, command)
     if cwd and not os.path.isdir(cwd):
         raise ValueError(f"working directory does not exist: {cwd}")
@@ -164,6 +183,7 @@ def run(command: str, values: Mapping[str, str], shell: str = "powershell", cwd:
         except subprocess.TimeoutExpired:
             proc.kill()
             out, err = b"", b""
-    stdout, cut_out = masked_output(out, values)
-    stderr, cut_err = masked_output(err, values)
+    secret = dict(values) if masked is None else {n: values[n] for n in masked}
+    stdout, cut_out = masked_output(out, secret)
+    stderr, cut_err = masked_output(err, secret)
     return RunResult(proc.returncode, stdout, stderr, timed_out, cut_out or cut_err)

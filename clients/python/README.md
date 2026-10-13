@@ -22,13 +22,17 @@ host = kp.field("app-db-user", "HOST")          # custom field
 ## MCP server
 
 The assistant only names references like `app-db-user#Password`. The server reads the values, starts the command
-with them as environment variables and returns the output with every injected value replaced by `***NAME***`.
+with them as environment variables and returns the output with the value of every protected field replaced by
+`***NAME***`. Protected are the fields KeePass protects (Password by default, custom fields with *Enable in-memory
+protection* on the entry's Advanced tab) and values that come from a reference (`{REF:...}`). Unprotected fields
+(Title, UserName, URL, Notes, ...) are treated as not secret and shown. With a plugin older than 1.4, which does not
+report protection, every value is masked and none is shown.
 
 | Tool | Does | Permission |
 |---|---|---|
 | `keepass_status` | is KeePass running, how many databases are unlocked | allow |
-| `list_entries` | UUID, title and name tags of the shared entries, no values | allow |
-| `list_fields` | field names of an entry, each marked `set` or `empty`, no values | allow |
+| `list_entries` | UUID, title and name tags of the shared entries | allow |
+| `list_fields` | fields of an entry: value of each unprotected field, `protected (set)` / `protected (empty)` for the others | allow |
 | `run_with_secrets` | runs a command (`powershell`, `pwsh`, `cmd` or Git `bash`) with `{"VAR": "<ref>[#Field]"}` as environment variables; returns exit code and masked output | **ask** |
 
 Example call:
@@ -88,8 +92,10 @@ https://github.com/jelinj8/Java-KeePassAccess/tree/main/clients/python"). Window
 
 ### Security notes
 
-- No tool returns a value. Masking covers the raw output in UTF-8, UTF-16 and the console/ANSI codepages,
-  multi-line values line by line, and every injected value (also non-secret ones like a host name).
+- No tool returns the value of a protected field. Masking covers the raw output in UTF-8, UTF-16 and the
+  console/ANSI codepages, and multi-line values line by line.
+- **Keep secrets in protected fields.** Notes and UserName are unprotected by default in KeePass and are shown to the
+  assistant. Put secrets into Password or into a custom field with *Enable in-memory protection* turned on.
 - Masking protects against accidental echo such as verbose logs or error dumps. It cannot stop a command written to
   transform a value (reverse, base64, ...) before printing it, and derived data such as the length is not masked;
   that is what the approval prompt is for.
