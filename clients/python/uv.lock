@@ -346,7 +346,7 @@ wheels = [
 
 [[package]]
 name = "keepass-access"
-version = "1.4.0.dev0"
+version = "1.4.0"
 source = { editable = "." }
 
 [package.optional-dependencies]
