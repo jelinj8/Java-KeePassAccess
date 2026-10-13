@@ -20,6 +20,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # A release tag vX.Y.Z must match the client version (pom revision) and the plugin version (X.Y.Z.0).
+      - name: Check release versions
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pom=$(sed -n 's#.*<revision>\(.*\)</revision>.*#\1#p' java/pom.xml)
+          dll=$(sed -n 's#.*AssemblyVersion("\(.*\)").*#\1#p' plugin/Properties/AssemblyInfo.cs)
+          echo "tag=$tag pom=$pom plugin=$dll"
+          [ "$pom" = "$tag" ] && [ "$dll" = "$tag.0" ] || { echo "::error::versions differ"; exit 1; }
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

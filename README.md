@@ -63,7 +63,7 @@ The UUID is 32 hex digits; dashes, braces and spaces are ignored. Base64 is appl
 <dependency>
   <groupId>cz.bliksoft.java</groupId>
   <artifactId>keepass-access</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
+  <version>1.2.0</version>
 </dependency>
 ```
 
@@ -83,9 +83,9 @@ name can be overridden with the system property `keepassaccess.pipe` or the envi
 Diagnostics, without printing any secret:
 
 ```
-java -jar keepass-access-1.0.0-SNAPSHOT.jar ping           unlocked database count
-java -jar keepass-access-1.0.0-SNAPSHOT.jar list           UUID, title and name tags of the shared entries
-java -jar keepass-access-1.0.0-SNAPSHOT.jar fields <ref>   field names of an entry (UUID or name)
+java -jar keepass-access-1.2.0.jar ping           unlocked database count
+java -jar keepass-access-1.2.0.jar list           UUID, title and name tags of the shared entries
+java -jar keepass-access-1.2.0.jar fields <ref>   field names of an entry (UUID or name)
 ```
 
 Build: `cd java && mvn clean install`.
