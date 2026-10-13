@@ -33,7 +33,9 @@ Downloads: the plugin DLL, the client jar, the PowerShell script and the Python 
 
 ## Install the plugin
 
-Download `KeePassAccess.dll` from the latest release, or build it:
+Requires KeePass 2.41 or newer. Download `KeePassAccess.dll` from the latest release (built against KeePass 2.41,
+so it loads in every newer version), or build it. A DLL built locally references the KeePass it was compiled
+against and loads only there and in newer versions, never in an older KeePass:
 
 ```
 plugin\build.bat                     (KEEPASS_DIR defaults to C:\Program Files\KeePass Password Safe 2)

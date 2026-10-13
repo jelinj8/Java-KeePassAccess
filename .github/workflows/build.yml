@@ -42,17 +42,18 @@ jobs:
         working-directory: java
         run: mvn -B --no-transfer-progress clean verify
 
-      # The plugin compiles against KeePass.exe; Chocolatey installs it to the default path build.bat expects.
-      # choco exits 0 even when its feed fails (e.g. 504, "installed 0/0 packages"), so check the result and retry.
-      - name: Install KeePass
+      # The plugin is compiled against the oldest supported KeePass, 2.41 (first with the entry context menu API).
+      # Newer KeePass versions redirect older plugin references to themselves; a DLL compiled against a newer
+      # KeePass does not load in an older one. Pinned download, checked against its SHA-256.
+      - name: Download KeePass 2.41
         run: |
-          $exe = 'C:\Program Files\KeePass Password Safe 2\KeePass.exe'
-          for ($i = 1; $i -le 5 -and -not (Test-Path $exe); $i++) {
-            if ($i -gt 1) { Write-Host "KeePass not installed, retry $i in $(15 * $i) s"; Start-Sleep -Seconds (15 * $i) }
-            choco install keepass -y --no-progress
-          }
-          if (-not (Test-Path $exe)) { Write-Host "::error::KeePass.exe not installed, Chocolatey feed unavailable?"; exit 1 }
-          exit 0
+          $zip = "$env:RUNNER_TEMP\KeePass-2.41.zip"
+          curl.exe -sSL --fail --retry 5 --retry-all-errors -o $zip "https://sourceforge.net/projects/keepass/files/KeePass%202.x/2.41/KeePass-2.41.zip/download"
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::KeePass download failed"; exit 1 }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($hash -ne 'B080C795976B2B9ECD24AE8C312A71D73DAD9C11AD0DEF7C426CE1BCE362EFC8') { Write-Host "::error::KeePass zip checksum mismatch: $hash"; exit 1 }
+          Expand-Archive $zip "$env:RUNNER_TEMP\KeePass-2.41"
+          "KEEPASS_DIR=$env:RUNNER_TEMP\KeePass-2.41" >> $env:GITHUB_ENV
 
       - name: Build plugin
         shell: cmd
