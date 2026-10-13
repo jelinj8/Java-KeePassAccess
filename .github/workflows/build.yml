@@ -43,8 +43,16 @@ jobs:
         run: mvn -B --no-transfer-progress clean verify
 
       # The plugin compiles against KeePass.exe; Chocolatey installs it to the default path build.bat expects.
+      # choco exits 0 even when its feed fails (e.g. 504, "installed 0/0 packages"), so check the result and retry.
       - name: Install KeePass
-        run: choco install keepass -y --no-progress
+        run: |
+          $exe = 'C:\Program Files\KeePass Password Safe 2\KeePass.exe'
+          for ($i = 1; $i -le 5 -and -not (Test-Path $exe); $i++) {
+            if ($i -gt 1) { Write-Host "KeePass not installed, retry $i in $(15 * $i) s"; Start-Sleep -Seconds (15 * $i) }
+            choco install keepass -y --no-progress
+          }
+          if (-not (Test-Path $exe)) { Write-Host "::error::KeePass.exe not installed, Chocolatey feed unavailable?"; exit 1 }
+          exit 0
 
       - name: Build plugin
         shell: cmd
