@@ -7,10 +7,11 @@ Author: Jakub Jelínek
 
 - `plugin/`: KeePass plugin `KeePassAccess.dll` (C# 5, .NET Framework 4). It serves a named pipe.
 - `java/`: client library `cz.bliksoft.java:keepass-access` (Java 11+, no dependencies) with a small diagnostic CLI.
+- `clients/powershell/`: `KeePassAccess.ps1` for scripts (Windows PowerShell 5.1+, PowerShell 7).
 
 Clients for other languages only need to speak the line protocol below over the named pipe.
 
-Downloads: the plugin DLL and the client jar are attached to each
+Downloads: the plugin DLL, the client jar and the PowerShell script are attached to each
 [GitHub release](https://github.com/jelinj8/Java-KeePassAccess/releases).
 
 ## Security model
@@ -89,6 +90,30 @@ java -jar keepass-access-1.2.0.jar fields <ref>   field names of an entry (UUID 
 ```
 
 Build: `cd java && mvn clean install`.
+
+## PowerShell
+
+`clients/powershell/KeePassAccess.ps1` talks to the pipe directly, without Java. Dot-source it and read values into
+variables:
+
+```powershell
+. .\KeePassAccess.ps1
+$dbPassword = Get-KeePassField app-db-user                # by name tag, Password field
+$dbHost     = Get-KeePassField app-db-user HOST           # any field
+$entry      = Get-KeePassEntry 3F2504E04F8911D39A0C0305E82C3301   # all fields, ordered dictionary
+Invoke-KeePassAccess PING                                 # raw request, returns the response lines
+```
+
+Errors are thrown as exceptions (`KeePassAccess: LOCKED ...`), so a script stops instead of continuing with an empty
+value. Field names are matched like in Java: exactly first, then case-insensitively. `KEEPASS_ACCESS_PIPE` overrides
+the pipe name. From another shell, e.g. Git Bash:
+
+```bash
+DB_PASSWORD=$(powershell -NoProfile -Command '. ./KeePassAccess.ps1; Get-KeePassField app-db-user')
+```
+
+The value then lives in the shell variable; avoid echoing it or passing it on a command line of another program,
+where other processes can see it, and prefer environment variables or stdin.
 
 ## License
 

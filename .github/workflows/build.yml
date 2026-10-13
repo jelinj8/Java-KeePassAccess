@@ -55,6 +55,7 @@ jobs:
           mkdir dist
           cp plugin/out/KeePassAccess.dll dist/
           cp java/target/keepass-access-*.jar dist/
+          cp clients/powershell/KeePassAccess.ps1 dist/
 
       - uses: actions/upload-artifact@v6
         with:
