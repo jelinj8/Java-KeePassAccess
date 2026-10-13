@@ -1,0 +1,10 @@
+plugin/out/
+java/target/
+java/.flattened-pom.xml
+.classpath
+.project
+.settings/
+.factorypath
+.vscode/
+.idea/
+.claude/
