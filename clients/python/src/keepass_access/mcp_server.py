@@ -6,6 +6,7 @@ values in environment variables and returns its output with the values masked.
     claude mcp add -s user keepass-access -- keepass-access-mcp
 """
 
+from importlib import metadata
 from typing import Callable, Dict, Optional
 
 from mcp.server.mcpserver import MCPServer
@@ -26,7 +27,12 @@ or a log, unless the user asked for exactly that."""
 
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 
-server = MCPServer("keepass-access", instructions=INSTRUCTIONS)
+try:
+    _VERSION = metadata.version("keepass-access")
+except metadata.PackageNotFoundError:
+    _VERSION = ""
+
+server = MCPServer("keepass-access", instructions=INSTRUCTIONS, version=_VERSION)
 
 # replaced in tests
 connect: Callable[[], KeePassAccess] = KeePassAccess.local
