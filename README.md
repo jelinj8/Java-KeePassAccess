@@ -8,10 +8,12 @@ Author: Jakub Jelínek
 - `plugin/`: KeePass plugin `KeePassAccess.dll` (C# 5, .NET Framework 4). It serves a named pipe.
 - `java/`: client library `cz.bliksoft.java:keepass-access` (Java 11+, no dependencies) with a small diagnostic CLI.
 - `clients/powershell/`: `KeePassAccess.ps1` for scripts (Windows PowerShell 5.1+, PowerShell 7).
+- `clients/python/`: Python package `keepass-access` (3.10+, no dependencies) and an MCP server that lets Claude
+  and other AI assistants use shared entries in commands without seeing the values.
 
 Clients for other languages only need to speak the line protocol below over the named pipe.
 
-Downloads: the plugin DLL, the client jar and the PowerShell script are attached to each
+Downloads: the plugin DLL, the client jar, the PowerShell script and the Python wheel are attached to each
 [GitHub release](https://github.com/jelinj8/Java-KeePassAccess/releases).
 
 ## Security model
@@ -114,6 +116,64 @@ DB_PASSWORD=$(powershell -NoProfile -Command '. ./KeePassAccess.ps1; Get-KeePass
 
 The value then lives in the shell variable; avoid echoing it or passing it on a command line of another program,
 where other processes can see it, and prefer environment variables or stdin.
+
+## Python
+
+```
+pip install "keepass-access @ git+https://github.com/jelinj8/Java-KeePassAccess#subdirectory=clients/python"
+```
+
+```python
+from keepass_access import KeePassAccess
+
+kp = KeePassAccess.local()
+password = kp.password("app-db-user")           # by name tag or UUID
+host = kp.field("app-db-user", "HOST")          # custom field
+```
+
+Same API and errors as the Java client (`KeePassAccessError`, an `OSError`, with `NotRunning`, `Locked`,
+`EntryNotFound`, `AccessDenied`, `Ambiguous`, `FieldNotFound`); `KEEPASS_ACCESS_PIPE` overrides the pipe name.
+
+## Claude (MCP server)
+
+`keepass-access-mcp` lets an AI assistant use shared entries in commands **without the values entering the
+conversation, the transcript or a shell history**. The assistant only names references; the server reads the
+values, starts the command with them in environment variables and returns the output with every injected value
+replaced by `***NAME***`.
+
+Register it for Claude Code (all projects of the user; needs [uv](https://docs.astral.sh/uv/)):
+
+```
+claude mcp add -s user keepass-access -- uvx --from "keepass-access[mcp] @ git+https://github.com/jelinj8/Java-KeePassAccess#subdirectory=clients/python" keepass-access-mcp
+```
+
+or from a checkout: `claude mcp add -s user keepass-access -- uv run --directory <checkout>\clients\python --extra mcp keepass-access-mcp`.
+Other MCP clients (`.mcp.json`, Claude Desktop) take the same command and arguments.
+
+| Tool | Does |
+|---|---|
+| `keepass_status` | is KeePass running, how many databases are unlocked |
+| `list_entries` | UUID, title and name tags of the shared entries |
+| `list_fields` | field names of an entry, each marked `set` or `empty` |
+| `run_with_secrets` | runs a command (`powershell`, `pwsh`, `cmd` or Git `bash`) with `{"VAR": "<ref>[#Field]"}` injected as environment variables; returns exit code and masked stdout/stderr |
+
+Example call by the assistant:
+
+```json
+{"command": "psql -h $env:DB_HOST -U app -c 'select 1'",
+ "secrets": {"PGPASSWORD": "app-db-user", "DB_HOST": "app-db-user#HOST"}}
+```
+
+Security notes:
+
+- No tool returns a value. Masking covers the raw output in UTF-8, UTF-16 and the console/ANSI codepages, multi-line
+  values line by line, and every injected value (also non-secret ones like a host name). It protects against
+  accidental echo such as verbose logs; it cannot stop a command written to transform a value (e.g. reverse or
+  base64 it) before printing, and derived data like the length is not masked.
+- `run_with_secrets` runs as the user, outside Claude Code's own Bash permissions. Allow the three read-only tools,
+  but keep `run_with_secrets` on *ask*, so each command and its secret references are approved before they run.
+- Commands run non-interactively, so no shell history is written. Values are passed only through the environment of
+  that one process tree, never on a command line.
 
 ## License
 

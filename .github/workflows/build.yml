@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # A release tag vX.Y.Z must match the client version (pom revision) and the plugin version (X.Y.Z.0).
+      # A release tag vX.Y.Z must match the Java client (pom revision), the plugin (X.Y.Z.0) and the Python package.
       - name: Check release versions
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
@@ -28,8 +28,9 @@ jobs:
           tag="${GITHUB_REF_NAME#v}"
           pom=$(sed -n 's#.*<revision>\(.*\)</revision>.*#\1#p' java/pom.xml)
           dll=$(sed -n 's#.*AssemblyVersion("\(.*\)").*#\1#p' plugin/Properties/AssemblyInfo.cs)
-          echo "tag=$tag pom=$pom plugin=$dll"
-          [ "$pom" = "$tag" ] && [ "$dll" = "$tag.0" ] || { echo "::error::versions differ"; exit 1; }
+          py=$(sed -n 's#^version = "\(.*\)"#\1#p' clients/python/pyproject.toml)
+          echo "tag=$tag pom=$pom plugin=$dll python=$py"
+          [ "$pom" = "$tag" ] && [ "$dll" = "$tag.0" ] && [ "$py" = "$tag" ] || { echo "::error::versions differ"; exit 1; }
 
       - uses: actions/setup-java@v5
         with:
@@ -49,6 +50,14 @@ jobs:
         shell: cmd
         run: plugin\build.bat
 
+      - uses: astral-sh/setup-uv@v10.0.1
+
+      - name: Test and build Python client
+        working-directory: clients/python
+        run: |
+          uv run --extra mcp pytest -q
+          uv build --wheel
+
       - name: Stage artifacts
         shell: bash
         run: |
@@ -56,6 +65,7 @@ jobs:
           cp plugin/out/KeePassAccess.dll dist/
           cp java/target/keepass-access-*.jar dist/
           cp clients/powershell/KeePassAccess.ps1 dist/
+          cp clients/python/dist/*.whl dist/
 
       - uses: actions/upload-artifact@v6
         with:
