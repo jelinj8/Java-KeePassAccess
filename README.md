@@ -19,7 +19,9 @@ Downloads: the plugin DLL, the client jar, the PowerShell script and the Python 
 ## Security model
 
 - Only entries tagged **`ExternalAccess`** are served (tag set in the entry's Properties, case-insensitive). Any
-  other entry gets `DENIED`, entries in the recycle bin are `NOT_FOUND`.
+  other entry gets `DENIED`, entries in the recycle bin are `NOT_FOUND`. A copied entry keeps its UUID: if it is
+  in several unlocked databases, the copy tagged `ExternalAccess` is served and untagged copies are ignored;
+  several tagged copies (one may be stale) give `AMBIGUOUS`.
 - The pipe `\\.\pipe\KeePassAccess-<Windows user>` grants access to the **current Windows user only**. A
   program running as you can read your tagged entries, the same as it could read a password file of yours, but
   nothing else and nobody else.

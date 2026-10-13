@@ -241,21 +241,44 @@ namespace KeePassAccess
 			return sb.Append('\n').ToString();
 		}
 
+		/// <summary>The entry with this UUID. A copied entry keeps its UUID, so it may be in several databases: the
+		/// copy tagged AccessTag is served, untagged copies are ignored, several tagged copies are AMBIGUOUS.</summary>
 		private string Get(PwUuid uuid)
 		{
 			List<PwDatabase> dbs = OpenDatabases();
 			if (dbs.Count == 0)
 				return Err("LOCKED", "no unlocked database");
+			bool exists = false;
+			PwDatabase foundDb = null;
+			PwEntry found = null;
+			List<string> dbNames = new List<string>();
 			foreach (PwDatabase db in dbs)
 			{
 				PwEntry e = db.RootGroup.FindEntry(uuid, true);
 				if (e == null || InRecycleBin(db, e))
 					continue;
+				exists = true;
 				if (!HasTag(e))
-					return Err("DENIED", "entry " + uuid.ToHexString() + " is not tagged " + AccessTag);
-				return Fields(db, e);
+					continue;
+				foundDb = db;
+				found = e;
+				dbNames.Add(DisplayName(db));
 			}
-			return Err("NOT_FOUND", "entry " + uuid.ToHexString() + " not found in the unlocked databases");
+			if (!exists)
+				return Err("NOT_FOUND", "entry " + uuid.ToHexString() + " not found in the unlocked databases");
+			if (dbNames.Count == 0)
+				return Err("DENIED", "entry " + uuid.ToHexString() + " is not tagged " + AccessTag);
+			if (dbNames.Count > 1)
+				return Err("AMBIGUOUS", "entry " + uuid.ToHexString() + " is shared in " + dbNames.Count
+					+ " databases: " + string.Join(", ", dbNames.ToArray()));
+			return Fields(foundDb, found);
+		}
+
+		private static string DisplayName(PwDatabase db)
+		{
+			if (!string.IsNullOrEmpty(db.Name))
+				return db.Name;
+			return db.IOConnectionInfo.GetDisplayName();
 		}
 
 		/// <summary>The shared entry (tagged AccessTag) that also carries the tag <paramref name="name"/>; it must
