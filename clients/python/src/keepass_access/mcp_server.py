@@ -15,7 +15,8 @@ from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
 from . import KeePassAccess, runner
-from .errors import Locked, NotRunning
+from ._protocol import USER_NAME
+from .errors import KeePassAccessError, Locked, NotRunning
 
 INSTRUCTIONS = """\
 Access to passwords and other fields of KeePass entries that the user shared (tag ExternalAccess) in their
@@ -56,13 +57,28 @@ def keepass_status() -> str:
 
 @server.tool(annotations=READ_ONLY)
 def list_entries() -> str:
-    """Shared entries: UUID, title and name tags (usable as references). No values."""
-    entries = connect().list()
+    """Shared entries: UUID, title, user name and name tags (UUID and name tags are usable as references). The user
+    name tells apart entries with the same title; it is shown only if the field is not protected."""
+    kp = connect()
+    entries = kp.list()
     if not entries:
         return "No shared entries. The user shares an entry with 'Allow External Access' in KeePass."
-    lines = ["uuid\ttitle\tnames"]
-    lines += [f"{e.uuid}\t{e.title}\t{', '.join(e.names)}" for e in entries]
+    lines = ["uuid\ttitle\tusername\tnames"]
+    lines += [f"{e.uuid}\t{e.title}\t{_user_name(kp, e.uuid)}\t{', '.join(e.names)}" for e in entries]
     return "\n".join(lines)
+
+
+def _user_name(kp: KeePassAccess, uuid: str) -> str:
+    """UserName of an entry if it is not protected; empty if unknown (plugin before 1.4, entry gone meanwhile)."""
+    try:
+        protected = kp.protected_fields(uuid)
+        if protected is None:
+            return ""
+        if runner.matched_field(kp.entry(uuid), USER_NAME) in protected:
+            return "(protected)"
+        return kp.entry(uuid).get(USER_NAME, "")
+    except KeePassAccessError:
+        return ""
 
 
 @server.tool(annotations=READ_ONLY)

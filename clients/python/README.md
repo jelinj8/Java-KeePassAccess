@@ -31,7 +31,7 @@ report protection, every value is masked and none is shown.
 | Tool | Does | Permission |
 |---|---|---|
 | `keepass_status` | is KeePass running, how many databases are unlocked | allow |
-| `list_entries` | UUID, title and name tags of the shared entries | allow |
+| `list_entries` | UUID, title, user name (unless protected; tells apart entries with the same title) and name tags of the shared entries | allow |
 | `list_fields` | fields of an entry: value of each unprotected field, `protected (set)` / `protected (empty)` for the others | allow |
 | `run_with_secrets` | runs a command (`powershell`, `pwsh`, `cmd` or Git `bash`) with `{"VAR": "<ref>[#Field]"}` as environment variables; returns exit code and masked output | **ask** |
 

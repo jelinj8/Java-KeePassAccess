@@ -4,7 +4,7 @@ import sys
 import pytest
 
 from keepass_access import KeePassAccess, NotRunning, mcp_server
-from conftest import PASSWORD, FakeTransport
+from conftest import ENTRY, PASSWORD, UUID, FakeTransport, entry_response
 
 
 @pytest.fixture
@@ -41,8 +41,22 @@ def test_status_not_running(monkeypatch):
 
 
 def test_list_entries(server):
-    text = mcp_server.list_entries()
-    assert "3f2504e04f8911d39a0c0305e82c3301\tDB\tapp-db-user, team" in text
+    lines = mcp_server.list_entries().split("\n")
+    assert lines[0] == "uuid\ttitle\tusername\tnames"
+    assert "3f2504e04f8911d39a0c0305e82c3301\tDB\tapp\tapp-db-user, team" in lines
+    assert f"{'0' * 32}\tOld\t\t" in lines  # entry gone meanwhile (NOT_FOUND): no user name, no error
+
+
+def test_list_entries_protected_user_name(monkeypatch):
+    t = FakeTransport({f"GET {UUID}\n": entry_response(ENTRY, ["Password", "UserName"])})
+    monkeypatch.setattr(mcp_server, "connect", lambda: KeePassAccess(t))
+    assert "\tDB\t(protected)\t" in mcp_server.list_entries()
+
+
+def test_list_entries_old_plugin_shows_no_user_name(monkeypatch):
+    t = FakeTransport({f"GET {UUID}\n": entry_response(ENTRY)})
+    monkeypatch.setattr(mcp_server, "connect", lambda: KeePassAccess(t))
+    assert "3f2504e04f8911d39a0c0305e82c3301\tDB\t\tapp-db-user, team" in mcp_server.list_entries()
 
 
 def test_list_fields_shows_only_unprotected_values(server):
